@@ -89,5 +89,5 @@ CHAT_ID = "YOUR_CHAT_ID"
 
 ### Task 6 - Document 
 - README.md with wiring diagram/photo, configuration steps (token, chat id), and usage instructions.
-
+![Work Flow Diagram](screenshot/IoT_Diagram.png)
 

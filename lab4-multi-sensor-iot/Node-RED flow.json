@@ -1,0 +1,155 @@
+[
+    {
+        "id": "aeccabd4de407192",
+        "type": "tab",
+        "label": "Flow 2",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "105bf3fbcb66ba50",
+        "type": "http in",
+        "z": "aeccabd4de407192",
+        "name": "",
+        "url": "/iot/gas",
+        "method": "post",
+        "upload": false,
+        "skipBodyParsing": false,
+        "swaggerDoc": "",
+        "x": 90,
+        "y": 180,
+        "wires": [
+            [
+                "f063e872f7fda7b3"
+            ]
+        ]
+    },
+    {
+        "id": "f063e872f7fda7b3",
+        "type": "json",
+        "z": "aeccabd4de407192",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 290,
+        "y": 180,
+        "wires": [
+            [
+                "297b2058205640cf",
+                "e26825d9c4def5ee",
+                "7374a36787f985b0"
+            ]
+        ]
+    },
+    {
+        "id": "e26825d9c4def5ee",
+        "type": "debug",
+        "z": "aeccabd4de407192",
+        "name": "debug 1",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 560,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "61e806bd2219f72d",
+        "type": "http response",
+        "z": "aeccabd4de407192",
+        "name": "",
+        "statusCode": "",
+        "headers": {},
+        "x": 750,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "c901dd0a59681612",
+        "type": "influxdb out",
+        "z": "aeccabd4de407192",
+        "influxdb": "154f777aba28fb14",
+        "name": "",
+        "measurement": "lab4_sensors",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "database",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "organisation",
+        "bucket": "bucket",
+        "x": 850,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "297b2058205640cf",
+        "type": "function",
+        "z": "aeccabd4de407192",
+        "name": "function 1",
+        "func": "let p = msg.payload;\n\n// If payload is still a JSON string, convert it\nif (typeof p === \"string\") {\n    try {\n        p = JSON.parse(p);\n    } catch (err) {\n        node.error(\"Invalid JSON payload: \" + err.message, msg);\n        return null;\n    }\n}\n\nfunction num(v, d = 0) {\n    const n = Number(v);\n    return isNaN(n) ? d : n;\n}\n\nlet risk = String(p.risk_level || \"UNKNOWN\");\nlet risk_code = 0;\n\nif (risk === \"SAFE\") {\n    risk_code = 1;\n} else if (risk === \"WARNING\") {\n    risk_code = 2;\n} else if (risk === \"DANGER\") {\n    risk_code = 3;\n}\n\nmsg.payload = {\n    gas_raw: num(p.gas_raw),\n    gas_avg: num(p.gas_avg),\n    body_temp: num(p.body_temp),\n    fever_flag: num(p.fever_flag),\n    room_temp: num(p.room_temp),\n    pressure: num(p.pressure),\n    altitude: num(p.altitude),\n    risk_code: risk_code\n};\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 140,
+        "wires": [
+            [
+                "c901dd0a59681612"
+            ]
+        ]
+    },
+    {
+        "id": "7374a36787f985b0",
+        "type": "function",
+        "z": "aeccabd4de407192",
+        "name": "function 2",
+        "func": "msg.payload = \"OK\";\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 560,
+        "y": 240,
+        "wires": [
+            [
+                "61e806bd2219f72d"
+            ]
+        ]
+    },
+    {
+        "id": "154f777aba28fb14",
+        "type": "influxdb",
+        "hostname": "127.0.0.1",
+        "port": 8086,
+        "protocol": "http",
+        "database": "iot_lab4",
+        "name": "",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "1.x",
+        "url": "http://localhost:8086",
+        "timeout": 10,
+        "rejectUnauthorized": true
+    },
+    {
+        "id": "71c7fd0e851779de",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0"
+        }
+    }
+]

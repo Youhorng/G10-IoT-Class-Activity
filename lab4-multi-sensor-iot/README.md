@@ -59,7 +59,7 @@ This is the diagram for the wiring setup with the available equipment.
 | DS3231 SCL   | GPIO22    | I2C      | Shared I2C clock line            |
 | MQ-5 VCC     | 5V        | —        | Power supply (requires 5V)       |
 | MQ-5 GND     | GND       | —        | Ground                           |
-| MQ-5 AOUT    | GPIO34    | ADC      | Analog output (12-bit ADC input) |
+| MQ-5 AOUT    | GPIO33    | ADC      | Analog output (12-bit ADC input) |
 
 > **Note:** MLX90614, BMP280, and DS3231 share the same I2C bus (GPIO21/GPIO22) since each has a unique I2C address. The MQ-5 sensor requires 5V but its analog output is safe for the ESP32 ADC at 3.3V logic.
 
@@ -74,16 +74,14 @@ These are the main configuration settings used across all tasks.
 
 ```python
 # Wi-Fi Configuration
-WIFI_SSID = "YOUR_SSID"
-WIFI_PASS = "YOUR_PASSWORD"
+WIFI_SSID = "Robotic WIFI"
+WIFI_PASS = "rbtWIFI@2025"
 
 # Node-RED Configuration
-NODERED_HOST = "192.168.x.x"   # Replace with your Node-RED server IP
-NODERED_PORT = 1880
-NODERED_ENDPOINT = "/sensor-data"
+NODE_RED_URL = "http://10.30.0.207:1880/iot/gas"
 
 # Pin Configuration
-MQ5_PIN = 34      # ADC pin for MQ-5 gas sensor
+MQ5_PIN = 33      # ADC pin for MQ-5 gas sensor
 
 # I2C Bus (shared by MLX90614, BMP280, DS3231)
 I2C_SDA = 21
@@ -109,7 +107,7 @@ FEVER_THRESHOLD = 32.5    # Degrees Celsius (object temperature)
 3. Install the InfluxDB output node via **Manage Palette**:
    - Search for `node-red-contrib-influxdb` and install
 4. Create a flow with the following nodes:
-   - **HTTP In** node — method: `POST`, URL: `/sensor-data`
+   - **HTTP In** node — method: `POST`, URL: `/iot/gas`
    - **JSON** node — parse the incoming payload
    - **InfluxDB Out** node — configure your database connection (see InfluxDB Setup)
 5. Deploy the flow
@@ -131,7 +129,7 @@ FEVER_THRESHOLD = 32.5    # Degrees Celsius (object temperature)
    - **Host:** `localhost`
    - **Port:** `8086`
    - **Database:** `iot_lab4`
-   - **Measurement:** `sensor_readings`
+   - **Measurement:** `lab4_sensors`
 
 ### 3. Grafana Setup
 
@@ -156,18 +154,18 @@ FEVER_THRESHOLD = 32.5    # Degrees Celsius (object temperature)
    - `mlx90614.py` — MLX90614 driver
    - `bmp280.py` — BMP280 driver
    - `ds3231.py` — DS3231 RTC driver
-4. Update configuration in `Lab4_Main.py`:
+4. Update configuration in `lab4_main.py`:
    ```python
-   WIFI_SSID = "YOUR_WIFI_SSID"
-   WIFI_PASS = "YOUR_WIFI_PASSWORD"
-   NODERED_HOST = "192.168.x.x"
+   WIFI_SSID = "Robotic WIFI"
+   WIFI_PASS = "rbtWIFI@2025"
+   NODE_RED_URL = "http://10.30.0.207:1880/iot/gas"
    ```
 5. Upload all files to ESP32 using Thonny:
-   - `Lab4_Main.py`
+   - `lab4_main.py`
    - `mlx90614.py`
    - `bmp280.py`
    - `ds3231.py`
-6. Run `Lab4_Main.py` and check the serial monitor for output
+6. Run `lab4_main.py` and check the serial monitor for output
 
 ## System Description
 
@@ -186,17 +184,20 @@ The structured JSON payload is sent via HTTP POST to Node-RED, stored in InfluxD
 ```json
 {
   "timestamp": "2025-01-01T10:00:00",
+  "gas_raw": 1850,
+  "gas_avg": 1870.0,
+  "risk_level": "SAFE",
   "body_temp": 36.5,
   "fever_flag": 0,
-  "gas_raw": 1850,
-  "gas_avg": 1870,
-  "risk_level": "SAFE",
+  "room_temp": 24.5,
   "pressure": 1013.25,
   "altitude": 45.2
 }
 ```
 
 ## System Architecture
+
+![System Architecture](./screenshot/flow_doagram.png)
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -254,25 +255,26 @@ from machine import ADC, Pin
 import urequests
 import json
 
-adc = ADC(Pin(34))
-adc.atten(ADC.ATTN_11DB)   # Full range: 0 - 3.3V
+adc = ADC(Pin(33))
+adc.atten(ADC.ATTN_11DB)
+adc.width(ADC.WIDTH_12BIT)
 
 gas_readings = []
-GAS_WINDOW_SIZE = 5
+WINDOW_SIZE = 5
 
-def get_gas_average(new_reading):
-    gas_readings.append(new_reading)
-    if len(gas_readings) > GAS_WINDOW_SIZE:
+def get_moving_average(new_value):
+    gas_readings.append(new_value)
+    if len(gas_readings) > WINDOW_SIZE:
         gas_readings.pop(0)
-    return sum(gas_readings) // len(gas_readings)
+    return sum(gas_readings) / len(gas_readings)
 
 # In main loop
 gas_raw = adc.read()
-gas_avg = get_gas_average(gas_raw)
+gas_avg = get_moving_average(gas_raw)
 print("Gas Raw:", gas_raw, "| Gas Avg:", gas_avg)
 ```
 
-**Evidence:** Serial Monitor screenshot showing raw vs. average values.
+![Task 1 Evidence](./screenshot/task1.jpg)
 
 ---
 
@@ -291,22 +293,25 @@ print("Gas Raw:", gas_raw, "| Gas Avg:", gas_avg)
 **Implementation:**
 
 ```python
-def classify_gas(avg):
-    if avg < 2100:
+def classify_risk(avg_value):
+    if avg_value < 2100:
         return "SAFE"
-    elif avg < 2600:
+    elif avg_value < 2600:
         return "WARNING"
     else:
         return "DANGER"
 
 # In main loop
-risk_level = classify_gas(gas_avg)
+risk_level = classify_risk(gas_avg)
 print("Risk Level:", risk_level)
 ```
 
 The `risk_level` string is included as a field in the JSON packet sent to Node-RED.
 
-**Evidence:** Screenshot demonstrating SAFE, WARNING, and DANGER states (e.g., by covering/exposing the sensor or simulating different ADC values).
+
+![Task 2 SAFE](./screenshot/task2_1.png)
+
+![Task 2 WARNING/DANGER](./screenshot/task2_2.png)
 
 ---
 
@@ -330,16 +335,16 @@ sensor = mlx90614.MLX90614(i2c)
 
 FEVER_THRESHOLD = 32.5
 
-def detect_fever(temp):
-    return 1 if temp >= FEVER_THRESHOLD else 0
+def get_fever_flag(body_temp):
+    return 1 if body_temp >= 32.5 else 0
 
 # In main loop
-body_temp = sensor.object_temp   # Object (surface) temperature in °C
-fever_flag = detect_fever(body_temp)
+body_temp = mlx.object_temp()
+fever_flag = get_fever_flag(body_temp)
 print("Body Temp:", body_temp, "°C | Fever Flag:", fever_flag)
 ```
 
-**Evidence:** Demonstration showing `fever_flag` toggling between 0 and 1 (e.g., placing hand over sensor vs. no object).
+![Task 3 Evidence](./screenshot/task3.png)
 
 ---
 
@@ -375,29 +380,15 @@ print("Timestamp:", timestamp)
 import urequests
 import json
 
-NODERED_URL = "http://192.168.x.x:1880/sensor-data"
+NODE_RED_URL = "http://10.30.0.207:1880/iot/gas"
 
-def send_to_nodered(body_temp, fever_flag, gas_raw, gas_avg, risk_level, pressure, altitude, timestamp):
-    payload = {
-        "timestamp":  timestamp,
-        "body_temp":  body_temp,
-        "fever_flag": fever_flag,
-        "gas_raw":    gas_raw,
-        "gas_avg":    gas_avg,
-        "risk_level": risk_level,
-        "pressure":   pressure,
-        "altitude":   altitude
-    }
+def send_to_nodered(payload):
     try:
-        r = urequests.post(
-            NODERED_URL,
-            data=json.dumps(payload),
-            headers={"Content-Type": "application/json"}
-        )
-        print("Sent:", r.status_code)
-        r.close()
+        response = urequests.post(NODE_RED_URL, json=payload)
+        print("Sent to Node-RED:", response.status_code)
+        response.close()
     except Exception as e:
-        print("HTTP Error:", e)
+        print("Failed to send data:", e)
 ```
 
 **Grafana Dashboard Panels:**
@@ -411,6 +402,7 @@ Create the following panels in a single Grafana dashboard (data source: InfluxDB
 | 3       | Body Temperature     | Gauge       | `body_temp`    |
 | 4       | Atmospheric Pressure | Time Series | `pressure`     |
 | 5       | Altitude             | Time Series | `altitude`     |
+| 6       | Room Temperature     | Gauge       | `room_temp`    |
 
 Example InfluxQL queries for Grafana:
 
@@ -431,7 +423,13 @@ SELECT mean("altitude") FROM "sensor_readings" WHERE $timeFilter GROUP BY time($
 SELECT last("risk_level") FROM "sensor_readings" WHERE $timeFilter
 ```
 
-**Evidence:** Screenshot of the complete Grafana dashboard showing all five panels with live data.
+![Node-RED Flow](./screenshot/task4.png)
+
+![InfluxDB Setup](./screenshot/influx_db.png)
+
+![Grafana Dashboard](./screenshot/grafana_dashboard.png)
+
+[YouTube Video Demo](https://youtu.be/JF9yqdEX5WU)
 
 ---
 
@@ -474,132 +472,3 @@ SELECT last("risk_level") FROM "sensor_readings" WHERE $timeFilter
    - Falls back gracefully if a sensor read fails
    - Serial monitor output for debugging during development
 
-## Flowchart
-
-```
-         ┌────────────────────────────────┐
-         │           START                │
-         └──────────────┬─────────────────┘
-                        │
-                        ▼
-         ┌──────────────────────────────┐
-         │  Connect to Wi-Fi            │
-         └──────────────┬───────────────┘
-                        │
-                        ▼
-         ┌──────────────────────────────┐
-         │  Initialise I2C Bus          │
-         │  (MLX90614, BMP280, DS3231)  │
-         └──────────────┬───────────────┘
-                        │
-                ┌───────▼────────┐
-                │   MAIN LOOP    │
-                └───────┬────────┘
-                        │
-          ┌─────────────┼─────────────┐
-          ▼             ▼             ▼
-  ┌───────────┐  ┌───────────┐  ┌───────────┐
-  │ Read MQ-5 │  │Read MLX   │  │Read BMP280│
-  │  ADC raw  │  │body_temp  │  │ pressure  │
-  └─────┬─────┘  └─────┬─────┘  │ altitude  │
-        │               │       └─────┬─────┘
-        ▼               │             │
-  ┌──────────────┐      │             │
-  │Moving Average│      │             │
-  │ (last 5 avg) │      │             │
-  └──────┬───────┘      │             │
-         │              ▼             │
-         ▼        ┌────────────┐      │
-  ┌──────────────┐│fever_flag  │      │
-  │Gas Risk      ││ = 1 if     │      │
-  │Classification││body_temp   │      │
-  │SAFE/WARN/    ││ >= 32.5°C  │      │
-  │DANGER        │└─────┬──────┘      │
-  └──────┬───────┘      │             │
-         └──────────────┼─────────────┘
-                        │
-                        ▼
-         ┌──────────────────────────────┐
-         │  Get DS3231 Timestamp        │
-         └──────────────┬───────────────┘
-                        │
-                        ▼
-         ┌──────────────────────────────┐
-         │  Assemble JSON Payload       │
-         └──────────────┬───────────────┘
-                        │
-                        ▼
-         ┌──────────────────────────────┐
-         │  HTTP POST → Node-RED        │
-         └──────────────┬───────────────┘
-                        │
-                        ▼
-         ┌──────────────────────────────┐
-         │  Node-RED → InfluxDB         │
-         │  Grafana reads & displays    │
-         └──────────────┬───────────────┘
-                        │
-                        ▼
-         ┌──────────────────────────────┐
-         │  Wait (e.g., 2 seconds)      │
-         └──────────────┬───────────────┘
-                        │
-                        └──────► MAIN LOOP
-```
-
-## Submission Checklist
-
-Students must submit all of the following:
-
-| #   | Item                         | Description                                          |
-| --- | ---------------------------- | ---------------------------------------------------- |
-| 1   | `main.py`                    | Complete MicroPython source code                     |
-| 2   | Flowchart                    | System flowchart (can be diagram tool or hand-drawn) |
-| 3   | Node-RED flow export         | JSON export from Node-RED (`Export → Clipboard`)     |
-| 4   | InfluxDB screenshot          | Screenshot showing data in InfluxDB                  |
-| 5   | Grafana dashboard screenshot | Screenshot of complete 5-panel dashboard             |
-| 6   | `README.md`                  | This file — explains system logic and configuration  |
-| 7   | Demo video (60–90 seconds)   | Short demo showing all sensors and dashboard live    |
-
-> **Academic Integrity:** All submitted work must be original. Code sharing between groups is strictly prohibited.
-
-## Troubleshooting
-
-### Common Issues
-
-1. **ESP32 won't connect to Wi-Fi**
-   - Double-check `WIFI_SSID` and `WIFI_PASS` in the config
-   - Ensure the Wi-Fi network is 2.4 GHz (ESP32 does not support 5 GHz)
-   - Check serial monitor for connection errors
-
-2. **I2C sensors not responding**
-   - Run an I2C scan to confirm device addresses:
-     ```python
-     from machine import I2C, Pin
-     i2c = I2C(0, sda=Pin(21), scl=Pin(22), freq=100000)
-     print(i2c.scan())  # Should list addresses e.g. [0x5A, 0x76, 0x68]
-     ```
-   - Check SDA/SCL wiring (GPIO21 and GPIO22)
-   - Verify all I2C modules are powered correctly (3.3V)
-
-3. **MQ-5 reading is always 0 or very noisy**
-   - Allow 60–120 seconds warm-up time after powering the MQ-5
-   - Confirm the module is connected to 5V (not 3.3V)
-   - Check the AOUT wire is connected to GPIO34
-
-4. **HTTP POST to Node-RED fails**
-   - Confirm the Node-RED server IP and port in `NODERED_URL`
-   - Verify the Node-RED flow is deployed (top right Deploy button)
-   - Check the HTTP In node URL path matches `/sensor-data`
-   - Test from a browser/Postman first to confirm Node-RED is running
-
-5. **No data appearing in InfluxDB**
-   - Open Node-RED debug panel to see if the HTTP payload is received
-   - Check the InfluxDB Out node configuration (database name, measurement)
-   - Confirm InfluxDB is running: `influx -execute "SHOW DATABASES"`
-
-6. **Grafana panels show "No data"**
-   - Verify the InfluxDB data source is configured correctly in Grafana
-   - Check the selected time range in Grafana (top-right; try "Last 1 hour")
-   - Test the InfluxQL query directly in the InfluxDB CLI before using it in Grafana
-   - Ensure the measurement and field names in queries exactly match what Node-RED writes

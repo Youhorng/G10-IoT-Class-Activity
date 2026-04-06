@@ -315,6 +315,11 @@ except:
 
 `Access-Control-Allow-Origin: *` is included in all responses so the MIT App web viewer can make cross-origin requests without being blocked.
 
+![Task 5 Evidence](./screenshots/task5.png)
+![Task 5 Evidence](./screenshots/task5_1.jpg)
+
+[YouTube Video Demo](https://youtu.be/aDfcDJsTEWc)
+
 ---
 
 ## Technical Features
